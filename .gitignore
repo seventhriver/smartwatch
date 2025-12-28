@@ -1,0 +1,9 @@
+# Arduino build artifacts
+*.elf
+*.hex
+
+# macOS junk
+.DS_Store
+
+# IDE temp files
+*.tmp
