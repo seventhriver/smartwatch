@@ -11,8 +11,11 @@
 // Data to I2C SDA (GPIO 4)
 // Clk to I2C SCL (GPIO 5)
 
+//Also need to download driver for usb-uart board
+
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <WiFiUdp.h>
 #include <Wire.h>
 #include <SSD1306Wire.h>
@@ -22,14 +25,13 @@
 #include <Timezone.h>
 #include <ArduinoJson.h>
 
-
-const int LeftButton = 14;
-int RightButton = 12;
-int MiddleButton = 13;
+const int LeftButton = 13;
+const int RightButton = 14;
+const int MiddleButton = 12;
 
 // Define NTP properties
-#define NTP_OFFSET   60 * 60      // In seconds
-#define NTP_INTERVAL 60 * 1000    // In miliseconds
+#define NTP_OFFSET   0     // In seconds - no offset here, we correct for timezone later
+#define NTP_INTERVAL 60 * 1000    // In miliseconds - frequency of syncing time with NTP
 #define NTP_ADDRESS  "us.pool.ntp.org"  // change this to whatever pool is closest (see ntp.org)
 
 // Set up the NTP UDP client
@@ -37,10 +39,10 @@ WiFiUDP ntpUDP;
 NTPClient timeClient(ntpUDP, NTP_ADDRESS, NTP_OFFSET, NTP_INTERVAL);
 
 // Create a display object
-SSD1306Wire  display(0x3C, 4, 5); //0x3C being the usual address of the OLED
+SSD1306Wire  display(0x3C, 4, 5); //0x3C is the usual hardware address of the OLED
 
 const char* ssid = "{wifi-network-name}";   // insert your own ssid
-const char* password = "{wifi-network-password}";              // and password
+const char* password = "{wifi-network-password}";         // and password
 String date;
 String t;
 String temp;
@@ -52,8 +54,8 @@ const String url = "https://api.openweathermap.org/data/2.5/weather?"; //put the
 const String ApiKey = "7ca95e3c3f554337c5ff41944d56ae2f";
 
 // Replace with your location
-const String lat = "{lat}";
-const String lon = "{lon}";
+const String lat = "{latitude}";
+const String lon = "{longitude}";
 
 WiFiClient client;
 
@@ -62,7 +64,6 @@ void setup() {
   Serial.begin(115200); // most ESP-01's use 115200 but this could vary
   timeClient.begin();   // Start the NTP UDP client
 
-  Wire.pins(4, 5);  // Start the OLED with GPIO 4 and 5 on ESP-01
   Wire.begin(4, 5); // 4=sda, 5=scl
   display.init();
   display.flipScreenVertically();
@@ -171,12 +172,16 @@ void tellTime() {
 void GetWeatherData() {
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
-    WiFiClient client;
-    http.begin(client, url + "lat=" + lat + "&lon=" + lon + "&units=imperial&appid=" + ApiKey); 
+    WiFiClientSecure client;
+    client.setInsecure();    
+    String request = url + "lat=" + lat + "&lon=" + lon + "&units=imperial&appid=" + ApiKey;
+    Serial.print("Sending HTTP request to ");
+    Serial.println(request);
+    http.begin(client, request); 
     int httpCode = http.GET();
     delay(500);
 
-    if (httpCode > 0) {
+    if (httpCode == 200) {
       //Read Data as a JSON string
       String JSON_Data = http.getString();
       Serial.println(JSON_Data);
@@ -189,10 +194,11 @@ void GetWeatherData() {
       //Retrieve the Current Weather Info
       const char* description = obj["weather"][0]["description"].as<const char*>();
       const float tempF = obj["main"]["temp"].as<float>();
-      temp = String(tempF, 2);
+      temp = String(tempF, 1);
 
     } else {
-      Serial.println("HTTP request failed.");
+      Serial.print("Weather - API request failed with code ");
+      Serial.println(httpCode);
     }
 
     http.end();
